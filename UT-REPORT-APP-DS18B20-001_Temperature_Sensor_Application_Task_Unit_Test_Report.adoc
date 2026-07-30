@@ -1,0 +1,584 @@
+= Unit Test Report: DS18B20 Temperature Sensor Application Task
+:doctype: article
+:toc: left
+:toclevels: 3
+:sectnums:
+:sectnumlevels: 4
+:icons: font
+:source-highlighter: rouge
+:revnumber: 1.0
+:revdate: 2026-07-30
+:revremark: Initial report — no test cases executed yet
+:author: CIOET Firmware Team
+:email: shanid@htic.iitm.ac.in
+:docref: UT-REPORT-APP-DS18B20-001
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Document Control Table
+// ─────────────────────────────────────────────────────────────────────────────
+
+== Test Report Version History
+[cols="1,1,2,2,2", options="header"]
+|===
+|Version |Date       |Author  |Reviewer  |Change Summary
+
+|1.0     |2026-07-30 |Shanid KT |        |Initial report. No test cases executed yet — the stub driver and host test harness referenced by the specification do not exist yet (see <<execution-readiness,Execution Readiness Checklist>> and Open Items OI-001/OI-002). All `Actual Results` fields below are marked *Not Run*.
+
+|===
+
+
+== Test Specification Version History
+
+[cols="1,1,2,2,2", options="header"]
+|===
+|Version |Date       |Author  |Reviewer  |Change Summary
+
+|1.0     |2026-07-30 |Shanid KT |        |Initial draft (`UT-SPEC-APP-DS18B20-001`) — scoped to `ds18b20_task.c`/`.h` only
+
+|===
+
+
+
+---
+
+[[execution-readiness]]
+== Execution Readiness Checklist — What Is Needed From Your Side
+
+None of the 8 test cases in this report have been executed. Before any `Actual Results` cell can be filled in, the following need to be done, in order:
+
+[cols="1,4,1", options="header"]
+|===
+|# |Action |Blocks
+
+|1
+|Create `stub_drv_ds18b20.c` — a link-time replacement for `DRV_DS18B20_Read()` with the control surface the spec assumes: `stub_ds18b20_set_next_result(bool ok, float temp_c, bool valid)`, `stub_ds18b20_get_call_count()`, `stub_ds18b20_get_last_cfg()`, `stub_ds18b20_reset()`. This is what lets you test `ds18b20_task.c` without pulling in the lead's driver or real hardware.
+|All 7 automated cases (UT-APP-DS18B20-001 to 007)
+
+|2
+|Create `orgport-app-s32k312/app/ds18b20/tests/test_ds18b20_task.c` and a small Makefile for it (mirror `common-libs/tests/Makefile`'s pattern: GCC host build, Unity, `-std=c11 -Wall -Wextra -Werror`). Since `APP_DS18B20_Task()` never returns, the harness needs to start it on a `pthread`, let the stub record calls, then `pthread_cancel()`/join before inspecting state — this is described in the spec's Test Environment section.
+|All 7 automated cases
+
+|3
+|Write the 7 automated test functions (`test_getlatest_null_pointer_is_noop`, etc. — one per `UT-APP-DS18B20-00x` in the spec) and register them with `RUN_TEST()` in a `main()`/test runner, following the exact stub sequences described in each test case's *Test Steps*.
+|All 7 automated cases
+
+|4
+|Run `make` (or equivalent) in the new test directory. Confirm the Unity summary line reads `7 Tests 0 Failures 0 Ignored`. Capture **one** console log/screenshot of the full run — this single artefact is the evidence for every automated test case (see the spec's Automated Test Execution Procedure).
+|All 7 automated cases
+
+|5
+|Paste the console log reference (filename or screenshot) into each automated test case's `Actual Results` field below, and change the field from *Not Run* to *PASS* (or *FAIL* with the assertion detail, plus an incident report reference) for each of the 7 `UT-APP-DS18B20-00x` IDs found in the log.
+|All 7 automated cases
+
+|6
+|For UT-APP-DS18B20-008 (the one manual case): flash the full firmware image (lead's driver/GPIO/build wiring, already tested and unchanged), let `APP_DS18B20_Task` run ≥ 2 s with a real sensor connected, read `APP_DS18B20_GetLatest()` via a debugger watch or diagnostic task, and record the observed value in that test case's `Actual Results` field.
+|UT-APP-DS18B20-008
+
+|7
+|Resolve OI-003 (confirm the real `SWRS-M1-SENS-01` requirement ID against the node-specific SWRS) and OI-004 (get the team lead's decision on the Read()-failure-is-ignored gap) before sending this report for formal review/sign-off — a report with unconfirmed requirement IDs and an unresolved known defect is not ready for sign-off even if all 8 test cases pass.
+|Formal review / sign-off
+
+|===
+
+=== Test Execution Summary (as of this revision)
+
+[cols="1,1", options="header"]
+|===
+|Metric |Value
+
+|Total test cases
+|8
+
+|Automated
+|7
+
+|Manual
+|1
+
+|Executed
+|0
+
+|Passed
+|0
+
+|Failed
+|0
+
+|Not Run (blocked — see steps 1–4 above)
+|7
+
+|Not Run (blocked — see step 6 above)
+|1
+
+|===
+
+---
+
+== Purpose
+
+This document defines the unit-level test specification for the `ds18b20_task` application module of the OrgPort S32K312 firmware:
+
+* *ds18b20_task* — FreeRTOS application task that continuously polls the DS18B20 temperature sensor and publishes the latest reading (`orgport-app-s32k312/app/ds18b20/ds18b20_task.c` / `.h`)
+
+`ds18b20_task.c/.h` is the only code authored for this feature by the engineer named in this document. Every other file the sensor depends on — the `drv_ds18b20` driver, `lib_onewire`, the `mw_gpio` open-drain fix, `drivers_init.c` (device configuration and `DRV_DS18B20_Init()` call), the GPIO pin table, the FreeRTOS task-registration and heap-sizing changes, and the build/IDE configuration — was authored by the team lead and is covered by its own, separately reviewed and already-executed test specification. This document does not re-test that code; it treats it as a trusted, pre-verified dependency and tests only the application-layer logic added on top of it.
+
+The purpose is to verify that `APP_DS18B20_Task()` and `APP_DS18B20_GetLatest()` behave correctly — in isolation from the real driver and real hardware — under nominal, boundary, and fault-injection conditions.
+
+== Scope
+
+This specification covers white-box and black-box unit tests for the two public functions of `ds18b20_task`:
+
+* `void APP_DS18B20_Task(void *pv_parameters)` — the FreeRTOS task entry point
+* `void APP_DS18B20_GetLatest(DRV_DS18B20_Data_t *out)` — the accessor used by the rest of the firmware (workflow engine, CANopen TPDO packaging) to read the last published value
+
+To isolate the application layer from the driver, all test cases in this specification link against a *test stub* of `DRV_DS18B20_Read()` (see <<test-environment,Test Environment>>) instead of the real `common-libs/drivers/sensors/ds18b20/drv_ds18b20.c`. The stub's correctness, and the correctness of `DRV_DS18B20_Init`/`DRV_DS18B20_Read` themselves, are out of scope here.
+
+This specification does *not* cover:
+
+* `drv_ds18b20` (Init/Read logic, CRC handling, 1-Wire timing) — lead's module, already tested
+* `lib_onewire` — already tested
+* `middleware/gpio/mw_gpio.c` (open-drain direction-switching fix) — lead's module, already tested
+* `drivers_init.c` / `.h` (device configuration, `APP_DS18B20_Cfg`, the `DRV_DS18B20_Init()` startup call) — lead's module, already tested
+* `app/gpio/GPIO_app_config.h` / `gpio_app_config.c` (DS18B20 pin assignment) — lead's module, already tested
+* `app/os/os_app_config.c` (FreeRTOS task table registration) and `generate/include/FreeRTOSConfig.h` (heap sizing) — lead's module, already tested
+* Physical sensor accuracy, 1-Wire bus timing, and CRC behaviour on real hardware — covered by the driver's own test specification
+* Integration behaviour between `ds18b20_task` and the workflow engine, FEM, or CANopen TPDO packaging — covered by the Integration Test Specification
+
+== Applicable Documents and Standards
+
+[cols="1,3", options="header"]
+|===
+|Reference |Title
+
+|IEC 62304:2006+AMD1:2015
+|Medical device software — Software life cycle processes
+
+|IEC 60601-1:2005+AMD1+AMD2
+|Medical electrical equipment — General requirements for basic safety
+
+|ISO 14971:2019
+|Application of risk management to medical devices
+
+|CIOET-ORGPORT-SWRS-2026-001
+|OrgPort Software Requirements Specification (Master)
+
+|OP-SDP-001
+|OrgPort Software Development Plan (task T-J2-07 references the sensor's acceptance criterion)
+
+|CIOET-ORGPORT-CGD-2026-001
+|C Coding Guidelines
+
+|===
+
+== Definitions and Abbreviations
+
+[cols="1,3", options="header"]
+|===
+|Term |Definition
+
+|CUT
+|Code Under Test — `APP_DS18B20_Task` and `APP_DS18B20_GetLatest`, in this document
+
+|DUT
+|Device Under Test — not applicable to the automated test cases in this document (host build); referenced only for the single on-target sanity check
+
+|Stub driver
+|A test-only replacement for `DRV_DS18B20_Read()` that returns a caller-controlled result instead of performing real 1-Wire bus I/O, so `ds18b20_task` can be exercised without the real driver or hardware
+
+|`s_latest_reading`
+|The module-static `DRV_DS18B20_Data_t` inside `ds18b20_task.c` that `APP_DS18B20_Task` writes and `APP_DS18B20_GetLatest` reads
+
+|FEM
+|Fault and Event Manager (`common_libs` utility module) — referenced only because `ds18b20_task` currently does not call it (see UT-APP-DS18B20-007)
+
+|TC
+|Test Case
+
+|===
+
+[[test-environment]]
+== Test Environment
+
+=== Hardware
+
+[cols="1,3", options="header"]
+|===
+|Item |Description
+
+|Host PC
+|Any machine capable of running the host build (Linux/macOS/Windows+MSYS2) — all automated test cases in this document run on the host, no target board required
+
+|DUT (sanity check only)
+|NXP S32K312 evaluation board with DS18B20 sensor, used only for the single on-target sanity check (UT-APP-DS18B20-008); the driver, GPIO, and build wiring under this are the lead's already-tested code
+
+|===
+
+=== Software and Toolchain
+
+[cols="1,3", options="header"]
+|===
+|Item |Description
+
+|Host compiler
+|GCC (`gcc`), `-std=c11 -Wall -Wextra -Werror`, following the pattern of `common-libs/tests/Makefile`
+
+|Unit Test Framework
+|Unity (host-PC build), new file `orgport-app-s32k312/app/ds18b20/tests/test_ds18b20_task.c` (does not yet exist — see <<execution-readiness,Execution Readiness Checklist>> step 2 / Open Items OI-001)
+
+|Task execution harness
+|Since `APP_DS18B20_Task()` never returns (`for(;;)`), the host test harness runs it on a POSIX thread (`pthread_create`) against the stub driver, then calls `pthread_cancel()`/joins the thread after a bounded number of stub-recorded calls or a short wall-clock timeout (e.g. 100 ms), and only then inspects state via `APP_DS18B20_GetLatest()`. This is a test-harness detail; it changes nothing in `ds18b20_task.c` itself.
+
+|Stub driver
+|New file `stub_drv_ds18b20.c` (does not yet exist — see <<execution-readiness,Execution Readiness Checklist>> step 1 / Open Items OI-002), providing a `DRV_DS18B20_Read()` with the same signature as the real driver, linked in place of `common-libs/drivers/sensors/ds18b20/drv_ds18b20.c`. Exposes: `stub_ds18b20_set_next_result(bool ok, float temp_c, bool valid)`, `stub_ds18b20_get_call_count()`, `stub_ds18b20_get_last_cfg()`.
+
+|Dummy config
+|A file-local dummy `DRV_DS18B20_Config_t` instance, with a pointer assigned to `APP_DS18B20_Cfg` for the duration of the test build (the real `APP_DS18B20_Cfg` and its populated contents belong to `drivers_init.c`, out of scope here — the test only needs *a* valid pointer, since the stub driver never dereferences it).
+
+|===
+
+=== General Preconditions (apply to all test cases unless overridden)
+
+. `stub_ds18b20_reset()` has been called immediately before each test case, clearing the call count, the recorded last-seen `cfg` pointer, and the queued result.
+. The stub driver's queued result defaults to `ok = true`, `temp_c = 0.0f`, `valid = true` unless a test case sets a different value.
+. No test case in this document links against the real `drv_ds18b20.c` — only against `stub_drv_ds18b20.c`.
+. `s_latest_reading` inside `ds18b20_task.c` is at its static zero-initialised value (`temperature_c = 0.0f`, `valid = false`) at the start of any test case that does not first run the task.
+. Test results are recorded in this report (document UT-REPORT-APP-DS18B20-001).
+
+=== Pass / Fail Criteria
+
+A test case passes when *all* expected results stated for each step are met with no deviation. Any single deviation constitutes a failure and must be recorded with an incident report reference.
+
+[[automated-test-execution-procedure]]
+=== Automated Test Execution Procedure
+
+The automated test cases in this specification (see the *Execution* column of the Test Traceability Matrix) are all exercised by a single host-build Unity run against the stub driver. This procedure is performed once and the resulting console output is the evidence attached for every automated test case below.
+
+. From `orgport-app-s32k312/app/ds18b20/tests/` (to be created — see <<execution-readiness,Execution Readiness Checklist>> step 2), run `make` (or the equivalent host-build command once the Makefile for this test directory exists). This compiles `ds18b20_task.c`, `stub_drv_ds18b20.c`, `test_ds18b20_task.c`, and Unity, then executes the resulting binary.
+. Unity prints one line per test case in the form `test_ds18b20_task.c:<line>:test_<name>:PASS` (or `FAIL` with the assertion detail).
+. Confirm the summary line at the end of the run reads `7 Tests 0 Failures 0 Ignored`.
+. Capture **one** console log of the full run.
+. For each automated test case below, locate its test function name in the captured console log and confirm the line ends `PASS`.
+
+*Combined Test Evidence Log*
+
+image::REPLACE_WITH_CONSOLE_LOG_FILENAME.png[Console output of the ds18b20_task host test binary showing all test cases PASS — not yet captured, see Execution Readiness Checklist]
+
+---
+
+== Module: ds18b20_task — Application Task
+
+=== Overview
+
+`ds18b20_task.c` is a thin application-layer wrapper with exactly two responsibilities:
+
+* `APP_DS18B20_Task(void *pv_parameters)` — a FreeRTOS task entry point that loops forever, calling `DRV_DS18B20_Read(APP_DS18B20_Cfg, &s_latest_reading)` on every iteration and discarding the boolean return value.
+* `APP_DS18B20_GetLatest(DRV_DS18B20_Data_t *out)` — copies `s_latest_reading` out to `*out` if `out` is non-NULL, otherwise does nothing.
+
+All test cases below exercise this logic against the stub driver described in <<test-environment,Test Environment>>, not the real sensor or the real 1-Wire driver.
+
+=== GetLatest — Output Behaviour
+
+==== UT-APP-DS18B20-001 — GetLatest with NULL output pointer is a no-op
+
+[cols="1,3", options="header"]
+|===
+|Field |Value
+
+|Test ID
+|UT-APP-DS18B20-001
+
+|Requirement
+|SWRS-M1-SENS-01 — _pending confirmation, see Open Items OI-003_
+
+|Objective
+|Verify that `APP_DS18B20_GetLatest(NULL)` does not dereference the NULL pointer and does not alter `s_latest_reading`.
+
+|Preconditions
+|General preconditions apply.
+
+|*Test Steps:* | Refer to <<automated-test-execution-procedure,Automated Test Execution Procedure>>. Test drives the stub to a known result, calls `APP_DS18B20_GetLatest(NULL)`, then calls `APP_DS18B20_GetLatest(&out)` with a valid pointer and confirms `out` still matches the known result (unaffected by the NULL call).
+
+|*Expected Results:*| No crash on the NULL call. The subsequent valid call returns the unchanged, previously-known state.
+|*Actual Results:*| *Not Run* — blocked on stub driver and test harness (see <<execution-readiness,Execution Readiness Checklist>> steps 1–4).
+|===
+
+---
+
+==== UT-APP-DS18B20-002 — GetLatest before any task iteration returns zero-initialised default
+
+[cols="1,3", options="header"]
+|===
+|Field |Value
+
+|Test ID
+|UT-APP-DS18B20-002
+
+|Requirement
+|SWRS-M1-SENS-01 — _pending confirmation, see Open Items OI-003_
+
+|Objective
+|Verify that, before `APP_DS18B20_Task` has ever run, `APP_DS18B20_GetLatest()` returns the static zero-initialised default (`valid == false`, `temperature_c == 0.0f`) rather than uninitialised memory.
+
+|Preconditions
+|General preconditions apply. `APP_DS18B20_Task` has not been started in this test case.
+
+|*Test Steps:* | Refer to <<automated-test-execution-procedure,Automated Test Execution Procedure>>. Test calls `APP_DS18B20_GetLatest(&out)` without ever running the task.
+
+|*Expected Results:*| `out.valid == false`; `out.temperature_c == 0.0f`.
+|*Actual Results:*| *Not Run* — blocked on stub driver and test harness (see <<execution-readiness,Execution Readiness Checklist>> steps 1–4).
+|===
+
+---
+
+==== UT-APP-DS18B20-003 — GetLatest reflects the result of a single task iteration
+
+[cols="1,3", options="header"]
+|===
+|Field |Value
+
+|Test ID
+|UT-APP-DS18B20-003
+
+|Requirement
+|SWRS-M1-SENS-01 — _pending confirmation, see Open Items OI-003_
+
+|Objective
+|Verify that after `APP_DS18B20_Task` completes one loop iteration against a stubbed successful read, `APP_DS18B20_GetLatest()` returns exactly the struct the stub driver wrote.
+
+|Preconditions
+|General preconditions apply. `stub_ds18b20_set_next_result(true, 36.5f, true)` called before starting the task.
+
+|*Test Steps:* | 1) Configure the stub to return `ok = true`, `temp_c = 36.5f`, `valid = true`. +
+2) Start `APP_DS18B20_Task` on the harness thread. +
+3) Wait until `stub_ds18b20_get_call_count() >= 1`. +
+4) Cancel/join the harness thread. +
+5) Call `APP_DS18B20_GetLatest(&out)`.
+
+|*Expected Results:*| `out.valid == true`; `out.temperature_c` within ±0.001°C of `36.5f`.
+|*Actual Results:*| *Not Run* — blocked on stub driver and test harness (see <<execution-readiness,Execution Readiness Checklist>> steps 1–4).
+|===
+
+---
+
+==== UT-APP-DS18B20-004 — GetLatest tracks the most recent iteration, not the first
+
+[cols="1,3", options="header"]
+|===
+|Field |Value
+
+|Test ID
+|UT-APP-DS18B20-004
+
+|Requirement
+|SWRS-SYS-03 (live sensor display)
+
+|Objective
+|Verify that `s_latest_reading` is overwritten on every loop iteration, so `APP_DS18B20_GetLatest()` always returns the *latest* stub result, not a value latched from the first successful read.
+
+|Preconditions
+|General preconditions apply.
+
+|*Test Steps:* | 1) Configure the stub to return `ok = true`, `temp_c = 10.0f`, `valid = true`. +
+2) Start `APP_DS18B20_Task`. +
+3) Wait until `stub_ds18b20_get_call_count() >= 1`, then reconfigure the stub to return `ok = true`, `temp_c = 20.0f`, `valid = true`. +
+4) Wait until `stub_ds18b20_get_call_count() >= 2`. +
+5) Cancel/join the harness thread. +
+6) Call `APP_DS18B20_GetLatest(&out)`.
+
+|*Expected Results:*| `out.temperature_c` is within ±0.001°C of `20.0f` (the second, more recent stub value) — not `10.0f`.
+|*Actual Results:*| *Not Run* — blocked on stub driver and test harness (see <<execution-readiness,Execution Readiness Checklist>> steps 1–4).
+|===
+
+---
+
+=== Task Loop Behaviour
+
+==== UT-APP-DS18B20-005 — Task forwards the configured driver-config pointer unchanged
+
+[cols="1,3", options="header"]
+|===
+|Field |Value
+
+|Test ID
+|UT-APP-DS18B20-005
+
+|Requirement
+|SWRS-M1-SENS-01 — _pending confirmation, see Open Items OI-003_
+
+|Objective
+|Verify that `APP_DS18B20_Task` passes `APP_DS18B20_Cfg` through to `DRV_DS18B20_Read()` unmodified on every call — the task must not substitute, copy, or mutate the config pointer it was built against.
+
+|Preconditions
+|General preconditions apply. The test-local dummy `APP_DS18B20_Cfg` pointer is recorded before starting the task.
+
+|*Test Steps:* | 1) Record the address of the test-local dummy `APP_DS18B20_Cfg`. +
+2) Start `APP_DS18B20_Task` and let it run for at least 2 stub-recorded calls. +
+3) Cancel/join the harness thread. +
+4) Call `stub_ds18b20_get_last_cfg()`.
+
+|*Expected Results:*| `stub_ds18b20_get_last_cfg()` equals the recorded `APP_DS18B20_Cfg` address on every call (checked via the stub's internal per-call log, or at minimum on the last call).
+|*Actual Results:*| *Not Run* — blocked on stub driver and test harness (see <<execution-readiness,Execution Readiness Checklist>> steps 1–4).
+|===
+
+---
+
+==== UT-APP-DS18B20-006 — Task continues polling indefinitely (does not exit or stall after one iteration)
+
+[cols="1,3", options="header"]
+|===
+|Field |Value
+
+|Test ID
+|UT-APP-DS18B20-006
+
+|Requirement
+|OP-SDP-001 §7 (Workflow Engine — continuous monitoring during PRESERVATION)
+
+|Objective
+|Verify that `APP_DS18B20_Task`'s `for(;;)` loop keeps calling `DRV_DS18B20_Read()` repeatedly rather than returning or stalling after the first call — the design intent is continuous polling for the lifetime of the task.
+
+|Preconditions
+|General preconditions apply. Stub configured to always return `ok = true`.
+
+|*Test Steps:* | 1) Start `APP_DS18B20_Task`. +
+2) Record `stub_ds18b20_get_call_count()` at t = 10 ms. +
+3) Record `stub_ds18b20_get_call_count()` again at t = 50 ms. +
+4) Cancel/join the harness thread.
+
+|*Expected Results:*| The call count at t = 50 ms is strictly greater than the call count at t = 10 ms, confirming the loop is still iterating and has not exited or blocked permanently.
+|*Actual Results:*| *Not Run* — blocked on stub driver and test harness (see <<execution-readiness,Execution Readiness Checklist>> steps 1–4).
+|===
+
+---
+
+=== Fault Handling (Known Gap)
+
+==== UT-APP-DS18B20-007 — Task ignores a failed DRV_DS18B20_Read() call
+
+[cols="1,3", options="header"]
+|===
+|Field |Value
+
+|Test ID
+|UT-APP-DS18B20-007
+
+|Requirement
+|CIOET-ORGPORT-CGD-2026-001 Rule 9 (every non-void return value must be checked; on failure call `LIB_FEM_Report()`)
+
+|Objective
+|Document and verify the current (non-conformant) behaviour of `APP_DS18B20_Task`: the return value of `DRV_DS18B20_Read()` is discarded with a `(void)` cast, and no fault is reported. When the stub returns `ok = false`, whatever it wrote into the output struct (including a stale or `valid = false` result) is copied into `s_latest_reading` exactly as with a successful call — the task does not distinguish success from failure and never calls `LIB_FEM_Report()`.
+
+|Preconditions
+|General preconditions apply.
+
+|*Test Steps:* | 1) Configure the stub to return `ok = false`, `temp_c = 0.0f`, `valid = false` (simulating a CRC failure or no-presence condition). +
+2) Start `APP_DS18B20_Task` and let it run for at least 1 stub-recorded call. +
+3) Cancel/join the harness thread. +
+4) Call `APP_DS18B20_GetLatest(&out)`.
+
+|*Expected Results (current behaviour — documents a gap, not a clean pass):*| `out` is copied straight from the stub's output struct regardless of the `ok` return value (`out.valid == false` in this case, because the stub wrote `valid = false`) — the task performs no additional error handling, retry, or fault escalation. No call is made to any FEM/fault-reporting function from within `ds18b20_task.c`, because no such call exists in the source. This is a *known gap* against the coding standard — see Open Items OI-004 for the required fix.
+|*Actual Results:*| *Not Run* — blocked on stub driver and test harness (see <<execution-readiness,Execution Readiness Checklist>> steps 1–4). Even once run, this test case is expected to confirm the gap, not close it — treat a "PASS" here as "gap confirmed present," not "issue resolved."
+|===
+
+---
+
+=== On-Target Sanity Check
+
+==== UT-APP-DS18B20-008 — GetLatest reflects a live reading once integrated with the real driver
+
+[cols="1,3", options="header"]
+|===
+|Field |Value
+
+|Test ID
+|UT-APP-DS18B20-008
+
+|Requirement
+|SWRS-SYS-03 (live sensor display)
+
+|Objective
+|A single on-target sanity check confirming that the application-layer logic verified above (UT-APP-DS18B20-001 through 007, against the stub) also behaves correctly once linked against the real, already-tested `drv_ds18b20` and running on the real, already-tested FreeRTOS task/build wiring. This is a seam check between "our code" and "the lead's code", not a re-test of driver accuracy, 1-Wire timing, or CRC handling — all of which remain out of scope (covered by the driver's own specification).
+
+|Preconditions
+|Full firmware image (lead's driver, GPIO, `drivers_init`, task registration, and build config all already verified per their own test specification). DS18B20 sensor connected and responding.
+
+|*Test Steps:* | 1) Boot the DUT and allow `APP_DS18B20_Task` to run for at least 2 s (a few polling cycles at 12-bit resolution). +
+2) Call `APP_DS18B20_GetLatest(&out)` from a debugger watch expression or a diagnostic task. +
+3) Compare `out.temperature_c` informally against ambient temperature (no calibrated-reference accuracy check here — that is the driver spec's job).
+
+|*Expected Results:*| `out.valid == true`; `out.temperature_c` is a plausible ambient value (not `0.0f`, not obviously garbage), confirming the task is correctly reading and publishing live driver output end-to-end.
+|*Actual Results:*| *Not Run* — blocked on a flashed firmware image and a connected sensor (see <<execution-readiness,Execution Readiness Checklist>> step 6).
+|===
+
+---
+
+== Test Traceability Matrix
+
+[cols="1,2,1,1,1,1", options="header"]
+|===
+|Test ID |Title |Requirement |Risk Class (IEC 62304) |Execution |Result
+
+|UT-APP-DS18B20-001 |GetLatest — NULL output pointer is a no-op |SWRS-M1-SENS-01* |C |Automated |Not Run
+|UT-APP-DS18B20-002 |GetLatest before first task iteration |SWRS-M1-SENS-01* |C |Automated |Not Run
+|UT-APP-DS18B20-003 |GetLatest reflects a single iteration's result |SWRS-M1-SENS-01* |C |Automated |Not Run
+|UT-APP-DS18B20-004 |GetLatest tracks the most recent iteration |SWRS-SYS-03 |C |Automated |Not Run
+|UT-APP-DS18B20-005 |Task forwards config pointer unchanged |SWRS-M1-SENS-01* |C |Automated |Not Run
+|UT-APP-DS18B20-006 |Task polls continuously, does not stall |OP-SDP-001 §7 |C |Automated |Not Run
+|UT-APP-DS18B20-007 |Task ignores Read() failure (known gap) |CGD-2026-001 Rule 9 |C |Automated |Not Run
+|UT-APP-DS18B20-008 |On-target sanity check with real driver |SWRS-SYS-03 |C |Manual |Not Run
+
+|===
+
+_*Requirement ID SWRS-M1-SENS-01 is an assumed allocation pending confirmation — see Open Items OI-003._
+
+[[manual-hardware-test-cases-summary]]
+== Manual / Hardware Test Cases Summary
+
+The following test case is marked `Manual` in the Test Traceability Matrix above. It requires the full, already-verified firmware image (driver + GPIO + build wiring, all lead's tested code) and a real sensor, and is not exercised by the host-build stub-driver test binary.
+
+[cols="1,2,3", options="header"]
+|===
+|Test ID |Title |Why Manual
+
+|UT-APP-DS18B20-008 |On-target sanity check with real driver |Requires the full firmware image and a real DS18B20 sensor; the automated cases above deliberately avoid the real driver and real hardware to keep this specification scoped to the application layer.
+
+|===
+
+---
+
+== Open Items
+
+[cols="1,1,3,1", options="header"]
+|===
+|ID |Priority |Description |Owner
+
+|OI-001
+|High
+|`orgport-app-s32k312/app/ds18b20/tests/test_ds18b20_task.c` and its Makefile do not exist yet — they must be created before any test case in this specification can be executed and evidenced. See <<execution-readiness,Execution Readiness Checklist>> steps 2–3.
+|Shanid KT
+
+|OI-002
+|High
+|`stub_drv_ds18b20.c` (the link-time stub replacing the real driver for these tests) does not exist yet. Needs `stub_ds18b20_set_next_result()`, `stub_ds18b20_get_call_count()`, `stub_ds18b20_get_last_cfg()`, and `stub_ds18b20_reset()`. See <<execution-readiness,Execution Readiness Checklist>> step 1.
+|Shanid KT
+
+|OI-003
+|Medium
+|Requirement ID for the DS18B20 channel (`SWRS-M1-SENS-01` used as a placeholder throughout this document) must be confirmed against `CIOET-ORGPORT-SWRS-S32K312-2026-001` (the node-specific SWRS) before this report can be formally reviewed.
+|Systems Engineering
+
+|OI-004
+|High
+|`APP_DS18B20_Task` discards the return value of `DRV_DS18B20_Read()` and never reports a failure (see UT-APP-DS18B20-007). Confirm with the team lead whether this is acceptable for the current release or needs a fix (e.g. force `s_latest_reading.valid = false` on failure) before formal sign-off.
+|Shanid KT
+
+|OI-005
+|Low
+|The host test harness's approach to running an infinite-loop FreeRTOS task on a POSIX thread (see <<test-environment,Test Environment>>) is one valid design choice; confirm this matches the team's existing host-test conventions for other `app/*_task.c` modules before reuse elsewhere.
+|Firmware Team
+
+|===
+
+---
+
+_End of document UT-REPORT-APP-DS18B20-001 v1.0 — 0 of 8 test cases executed. See <<execution-readiness,Execution Readiness Checklist>> for what to do next._
