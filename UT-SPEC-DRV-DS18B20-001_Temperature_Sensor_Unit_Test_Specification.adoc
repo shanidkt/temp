@@ -22,7 +22,7 @@
 |===
 |Version |Date       |Author  |Reviewer  |Change Summary
 
-|0.1     |2026-07-30 |Shanid KT |         |Initial draft
+|1.0     |2026-07-30 |Shanid KT |Benin R |Initial draft
 
 |===
 
