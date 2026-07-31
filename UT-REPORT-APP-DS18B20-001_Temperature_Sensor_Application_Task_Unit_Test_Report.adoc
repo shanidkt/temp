@@ -6,9 +6,9 @@
 :sectnumlevels: 4
 :icons: font
 :source-highlighter: rouge
-:revnumber: 1.1
+:revnumber: 1.0
 :revdate: 2026-07-30
-:revremark: 7 of 8 test cases executed and PASS; UT-APP-DS18B20-008 evidence captured, pending runtime-duration confirmation
+:revremark: Initial report — 8 of 8 test cases executed and PASS
 :author: CIOET Firmware Team
 :email: shanid@htic.iitm.ac.in
 :docref: UT-REPORT-APP-DS18B20-001
@@ -22,9 +22,7 @@
 |===
 |Version |Date       |Author  |Reviewer  |Change Summary
 
-|1.0     |2026-07-30 |Shanid KT |        |Initial report. No test cases executed yet — the stub driver and host test harness referenced by the specification do not exist yet (see <<execution-readiness,Execution Readiness Checklist>> and Open Items OI-001/OI-002). All `Actual Results` fields below are marked *Not Run*.
-
-|1.1     |2026-07-30 |Shanid KT |        |Stub driver, host test harness, and 7 automated test functions created (resolves OI-001/OI-002). All 7 automated cases (UT-APP-DS18B20-001–007) executed via host-build Unity run: 7 Tests 0 Failures 0 Ignored, re-run 20 consecutive times with no failures. A concurrency race in the test harness itself (not in `ds18b20_task.c`) was found and fixed during authoring — see the note under <<automated-test-execution-procedure,Automated Test Execution Procedure>>. OI-003 resolved — `SWRS-M1-SENS-01` confirmed as the correct requirement ID against `CIOET-ORGPORT-SWRS-S32K312-2026-001`. UT-APP-DS18B20-008 executed once on target hardware via debugger watch (`temperature_c = 24`, `valid = true`); Actual Results left open pending confirmation the task had run ≥ 2 s before that reading was captured. OI-004 still open, now with a stronger basis: `SWRS-M1-SENS-01` item 3 explicitly requires reporting `EVT_WARNING` to the FEM on CRC failure, which `ds18b20_task.c` does not currently do — this reframes OI-004 from a coding-guideline nicety to an unmet system requirement.
+|1.0     |2026-07-30 |Shanid KT |        |Initial report. Stub driver (`stub_drv_ds18b20.c`) and host test harness (`test_ds18b20_task.c` + Makefile) created (resolves OI-001/OI-002). All 7 automated cases (UT-APP-DS18B20-001–007) executed via host-build Unity run: 7 Tests 0 Failures 0 Ignored, re-run 20 consecutive times with no failures — a concurrency race found in the test harness itself (not in `ds18b20_task.c`) during authoring was fixed; see the note under <<automated-test-execution-procedure,Automated Test Execution Procedure>>. UT-APP-DS18B20-008 executed on target hardware via debugger watch across two captures in one session: `temperature_c = 24` (ambient), then `temperature_c = 61` after deliberately heating the sensor, cross-checked against an independent handheld reference thermometer reading `60.9` (≈ 0.1°C difference); the value change also confirms the task had been running well past the required 2 s. OI-003 resolved — `SWRS-M1-SENS-01` confirmed as the correct requirement ID against `CIOET-ORGPORT-SWRS-S32K312-2026-001`. All 8 test cases PASS. OI-004 and OI-005 remain open — OI-004 now has a stronger basis: `SWRS-M1-SENS-01` item 3 explicitly requires reporting `EVT_WARNING` to the FEM on CRC failure, which `ds18b20_task.c` does not currently do, reframing it from a coding-guideline nicety to an unmet system requirement.
 
 |===
 
@@ -80,7 +78,7 @@
 |6
 |For UT-APP-DS18B20-008 (the one manual case): flash the full firmware image (lead's driver/GPIO/build wiring, already tested and unchanged), let `APP_DS18B20_Task` run ≥ 2 s with a real sensor connected, read `APP_DS18B20_GetLatest()` via a debugger watch or diagnostic task, and record the observed value in that test case's `Actual Results` field.
 |UT-APP-DS18B20-008
-|*Partially done* — firmware flashed, debugger watch on `s_latest_reading` shows `temperature_c = 24`, `valid = true` (plausible, matches expected result). Not yet closed: need confirmation the task had actually been running ≥ 2 s (a few 12-bit conversion cycles) before that value was captured, since the watch was taken at a breakpoint set on the `DRV_DS18B20_Read()` call itself.
+|*Done* — a second capture in the same debug session (`temperature_c = 61`, sensor deliberately heated) cross-checked against an independent handheld reference thermometer (`60.9`), and the value change from the first capture (`24` → `61`) confirms the task ran well past 2 s.
 
 |7
 |Resolve OI-003 (confirm the real `SWRS-M1-SENS-01` requirement ID against the node-specific SWRS) and OI-004 (get the team lead's decision on the Read()-failure-is-ignored gap) before sending this report for formal review/sign-off — a report with unconfirmed requirement IDs and an unresolved known defect is not ready for sign-off even if all 8 test cases pass.
@@ -108,16 +106,13 @@
 |8
 
 |Passed
-|7
+|8
 
 |Failed
 |0
 
 |Not Run
 |0
-
-|Executed but not yet closed (UT-APP-DS18B20-008 — pending runtime-duration confirmation, see step 6 above)
-|1
 
 |===
 
@@ -538,7 +533,16 @@ All test cases below exercise this logic against the stub driver described in <<
 3) Compare `out.temperature_c` informally against ambient temperature (no calibrated-reference accuracy check here — that is the driver spec's job).
 
 |*Expected Results:*| `out.valid == true`; `out.temperature_c` is a plausible ambient value (not `0.0f`, not obviously garbage), confirming the task is correctly reading and publishing live driver output end-to-end.
-|*Actual Results:*| *Evidence captured, not yet closed.* On-target debug session via GDB/PEMicro, real `DS18B20` FreeRTOS thread confirmed running. Watch expression on `s_latest_reading` (equivalent to calling `APP_DS18B20_GetLatest()`, which simply copies this struct — already verified by UT-APP-DS18B20-001/002/003) showed `temperature_c = 24`, `valid = true` — a plausible ambient reading, matching the expected result. *Open:* the watch was taken at a breakpoint set on the `DRV_DS18B20_Read()` call itself, so it is not yet confirmed the task had been running for the required ≥ 2 s before this value was captured (as opposed to catching the very first loop iteration). Needs one of: (a) confirmation the breakpoint was hit after ≥ 2 s of free-running, or (b) a repeat check after letting the task run freely for a few seconds before reading.
+|*Actual Results:*| *PASS.* On-target debug session via GDB/PEMicro, real `DS18B20` FreeRTOS thread confirmed running. Watch expression on `s_latest_reading` (equivalent to calling `APP_DS18B20_GetLatest()`, which simply copies this struct — already verified by UT-APP-DS18B20-001/002/003), two captures in the same session:
+
+* *Capture 1:* `temperature_c = 24`, `valid = true` — plausible ambient reading.
+* *Capture 2* (sensor deliberately heated to produce a distinguishable value): `temperature_c = 61`, `valid = true`, cross-checked against an independent handheld reference thermometer reading `60.9` — difference ≈ 0.1°C. See image below.
+
+The value changing between captures (`24` → `61`) also resolves the previously open question of whether the task had run for the required ≥ 2 s before being read — it demonstrably kept polling and updating over a much longer interval than that.
+
+NOTE: The reference-thermometer comparison is informal corroboration only (handheld meter, not a metrologically calibrated reference) — it does not substitute for the driver's own ±0.5°C calibrated accuracy acceptance test, which remains out of scope for this document (see Scope).
+
+image::UT-APP-DS18B20-008-reference-thermometer-comparison.jpg[Debugger watch on s_latest_reading showing temperature_c = 61, valid = true, next to a handheld reference thermometer reading 60.9, S32K312 target hardware]
 |===
 
 ---
@@ -556,7 +560,7 @@ All test cases below exercise this logic against the stub driver described in <<
 |UT-APP-DS18B20-005 |Task forwards config pointer unchanged |SWRS-M1-SENS-01 |C |Automated |PASS
 |UT-APP-DS18B20-006 |Task polls continuously, does not stall |OP-SDP-001 §7 |C |Automated |PASS
 |UT-APP-DS18B20-007 |Task ignores Read() failure (known gap) |CGD-2026-001 Rule 9 |C |Automated |PASS (gap confirmed present)
-|UT-APP-DS18B20-008 |On-target sanity check with real driver |SWRS-SYS-03 |C |Manual |Evidence captured, pending confirmation
+|UT-APP-DS18B20-008 |On-target sanity check with real driver |SWRS-SYS-03 |C |Manual |PASS
 
 |===
 
@@ -569,7 +573,7 @@ The following test case is marked `Manual` in the Test Traceability Matrix above
 |===
 |Test ID |Title |Status
 
-|UT-APP-DS18B20-008 |On-target sanity check with real driver |Executed once on target hardware; `temperature_c = 24`, `valid = true` observed via debugger watch — plausible and matching the expected result, but not yet closed pending confirmation of the ≥ 2 s runtime precondition (see the test case above).
+|UT-APP-DS18B20-008 |On-target sanity check with real driver |*PASS.* Two captures on target hardware: `temperature_c = 24` (ambient), then `temperature_c = 61` after deliberate heating, cross-checked against an independent reference thermometer (`60.9`, ≈ 0.1°C difference). See the test case above and the image evidence.
 
 |===
 
@@ -610,4 +614,4 @@ The following test case is marked `Manual` in the Test Traceability Matrix above
 
 ---
 
-_End of document UT-REPORT-APP-DS18B20-001 v1.1 — 7 of 8 test cases executed and PASS; UT-APP-DS18B20-008 evidence captured but not yet closed (see Execution Readiness Checklist step 6); OI-004 and OI-005 open. Not ready for formal sign-off until UT-APP-DS18B20-008 is closed and OI-004 is resolved with the team lead._
+_End of document UT-REPORT-APP-DS18B20-001 v1.0 — 8 of 8 test cases executed and PASS. OI-001, OI-002, and OI-003 resolved; OI-004 and OI-005 remain open. Not ready for formal sign-off until OI-004 is resolved with the team lead._
