@@ -270,7 +270,13 @@ NOTE: On the machine this was executed on, `make` itself could not be used direc
 
 NOTE: During authoring, a genuine concurrency bug was found and fixed in the test harness (not in `ds18b20_task.c`): `test_getlatest_tracks_most_recent_iteration` (UT-APP-DS18B20-004) initially waited for `stub_ds18b20_get_call_count() >= 2` after reconfiguring the stub mid-test, which does not guarantee the second call happened *after* the reconfiguration — the task's spin loop can race ahead and complete two iterations before the test thread even reaches the reconfigure call, both still reading the old value. Observed failure: `Expected 20 Was 10`, intermittently. Fixed by snapshotting the call count immediately after reconfiguring and waiting for one further call past that snapshot, which is deterministic given `stub_drv_ds18b20.c`'s single mutex serializes reconfigure and read calls. Re-run 20 consecutive times after the fix with 0 failures.
 
-*Combined Test Evidence Log*
+*Combined Test Evidence Log and screen shot*
+
+'''
+
+image::UT-APP-DS18B20-001-TestEvidence_V1.0.png[Combined Test Evidence Screenshot]
+
+'''
 
 Full console output (`gcc 13.1.0`, `x86_64-w64-mingw32`), captured to `docs/Unit_test_report/UT-APP-DS18B20-001-TestEvidence_V1.0.txt`:
 
