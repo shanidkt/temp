@@ -583,6 +583,14 @@ The following test case is marked `Manual` in the Test Traceability Matrix above
 
 |===
 
+*On-Target Evidence Screenshot*
+
+'''
+
+image::UT-APP-DS18B20-002-TestEvidence_V1.0.png[On-target debugger watch evidence for UT-APP-DS18B20-008]
+
+'''
+
 ---
 
 == Open Items
