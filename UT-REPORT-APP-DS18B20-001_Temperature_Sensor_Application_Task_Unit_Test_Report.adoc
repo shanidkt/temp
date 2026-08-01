@@ -6,9 +6,9 @@
 :sectnumlevels: 4
 :icons: font
 :source-highlighter: rouge
-:revnumber: 1.0
-:revdate: 2026-07-30
-:revremark: Initial report — 8 of 8 test cases executed and PASS
+:revnumber: 1.1
+:revdate: 2026-08-01
+:revremark: OI-004 fix implemented — UT-APP-DS18B20-007 updated and UT-APP-DS18B20-009 added; both awaiting re-run and evidence capture
 :author: CIOET Firmware Team
 :email: shanid@htic.iitm.ac.in
 :docref: UT-REPORT-APP-DS18B20-001
@@ -22,7 +22,9 @@
 |===
 |Version |Date       |Author  |Reviewer  |Change Summary
 
-|1.0     |2026-07-30 |Shanid KT |        |Initial report. Stub driver (`stub_drv_ds18b20.c`) and host test harness (`test_ds18b20_task.c` + Makefile) created (resolves OI-001/OI-002). All 7 automated cases (UT-APP-DS18B20-001–007) executed via host-build Unity run: 7 Tests 0 Failures 0 Ignored, re-run 20 consecutive times with no failures — a concurrency race found in the test harness itself (not in `ds18b20_task.c`) during authoring was fixed; see the note under <<automated-test-execution-procedure,Automated Test Execution Procedure>>. UT-APP-DS18B20-008 executed on target hardware via debugger watch across two captures in one session: `temperature_c = 24` (ambient), then `temperature_c = 61` after deliberately heating the sensor, cross-checked against an independent handheld reference thermometer reading `60.9` (≈ 0.1°C difference); the value change also confirms the task had been running well past the required 2 s. OI-003 resolved — `SWRS-M1-SENS-01` confirmed as the correct requirement ID against `CIOET-ORGPORT-SWRS-S32K312-2026-001`. All 8 test cases PASS. OI-004 and OI-005 remain open — OI-004 now has a stronger basis: `SWRS-M1-SENS-01` item 3 explicitly requires reporting `EVT_WARNING` to the FEM on CRC failure, which `ds18b20_task.c` does not currently do, reframing it from a coding-guideline nicety to an unmet system requirement.
+|1.0     |2026-07-30 |Shanid KT |        |Initial report. Stub driver and host test harness created (resolves OI-001/OI-002). UT-APP-DS18B20-001–007 run via host-build Unity: 7/7 pass, re-run 20x clean. UT-APP-DS18B20-008 verified on target hardware against a reference thermometer. OI-003 resolved. All 8 test cases PASS. OI-004 and OI-005 remain open — see <<automated-test-execution-procedure,Automated Test Execution Procedure>> and Open Items for details.
+
+|1.1     |2026-08-01 |Shanid KT |benin-htic |OI-004 fix: `ds18b20_task.c` now calls `LIB_FEM_Report()` on a failed read. UT-APP-DS18B20-007 updated and UT-APP-DS18B20-009 added to verify it. Not yet re-run on this machine (no C compiler available) — Actual Results pending. OI-005 remains open.
 
 |===
 
@@ -44,7 +46,7 @@
 [[execution-readiness]]
 == Execution Readiness Checklist — What Is Needed From Your Side
 
-7 of 8 test cases in this report have been executed and PASS. Status of each step:
+7 of 9 test cases in this report have been executed and PASS; the OI-004 fix added/updated 2 more (UT-APP-DS18B20-007, -009) that still need a re-run on a machine with a C toolchain. Status of each step:
 
 [cols="1,4,1,1", options="header"]
 |===
@@ -83,7 +85,12 @@
 |7
 |Resolve OI-003 (confirm the real `SWRS-M1-SENS-01` requirement ID against the node-specific SWRS) and OI-004 (get the team lead's decision on the Read()-failure-is-ignored gap) before sending this report for formal review/sign-off — a report with unconfirmed requirement IDs and an unresolved known defect is not ready for sign-off even if all 8 test cases pass.
 |Formal review / sign-off
-|*Partially done* — OI-003 resolved (see Open Items below). OI-004 still requires the team lead's decision.
+|*Done* — OI-003 resolved; OI-004 fix implemented per team lead review comment (see item 8).
+
+|8
+|OI-004 fix: `ds18b20_task.c` now calls `LIB_FEM_Report()` on a failed read (see UT-APP-DS18B20-007, updated; UT-APP-DS18B20-009, added). Re-run the host test suite on a machine with a working C toolchain and capture fresh evidence for both. Tracked in ORPT-120.
+|UT-APP-DS18B20-007, UT-APP-DS18B20-009
+|*Code done, verification pending* — this machine's C toolchain (S32DS-bundled MinGW GCC) is blocked by Windows Application Control (`as.exe`), same restriction already noted for the v1.0 evidence run above.
 
 |===
 
@@ -94,25 +101,25 @@
 |Metric |Value
 
 |Total test cases
-|8
+|9
 
 |Automated
-|7
+|8
 
 |Manual
 |1
 
 |Executed
-|8
+|7
 
 |Passed
-|8
+|7
 
 |Failed
 |0
 
 |Not Run
-|0
+|2 (UT-APP-DS18B20-007 — assertions changed by the OI-004 fix; UT-APP-DS18B20-009 — new)
 
 |===
 
@@ -483,9 +490,9 @@ All test cases below exercise this logic against the stub driver described in <<
 
 ---
 
-=== Fault Handling (Known Gap)
+=== Fault Handling
 
-==== UT-APP-DS18B20-007 — Task ignores a failed DRV_DS18B20_Read() call
+==== UT-APP-DS18B20-007 — Task reports a failed DRV_DS18B20_Read() call to the FEM
 
 [cols="1,3", options="header"]
 |===
@@ -495,21 +502,51 @@ All test cases below exercise this logic against the stub driver described in <<
 |UT-APP-DS18B20-007
 
 |Requirement
-|CIOET-ORGPORT-CGD-2026-001 Rule 9 (every non-void return value must be checked; on failure call `LIB_FEM_Report()`). Also directly relevant: `SWRS-M1-SENS-01` item 3 — "Detect DS18B20 CRC failures and report `EVT_WARNING` to the FEM on each failure" — see Open Items OI-004.
+|CIOET-ORGPORT-CGD-2026-001 Rule 9 (every non-void return value must be checked; on failure call `LIB_FEM_Report()`). `SWRS-M1-SENS-01` item 3 — "Detect DS18B20 CRC failures and report `EVT_WARNING` to the FEM on each failure" — see Open Items OI-004.
 
 |Objective
-|Document and verify the current (non-conformant) behaviour of `APP_DS18B20_Task`: the return value of `DRV_DS18B20_Read()` is discarded with a `(void)` cast, and no fault is reported. When the stub returns `ok = false`, whatever it wrote into the output struct (including a stale or `valid = false` result) is copied into `s_latest_reading` exactly as with a successful call — the task does not distinguish success from failure and never calls `LIB_FEM_Report()`.
+|Verify the OI-004 fix: `APP_DS18B20_Task` now calls `LIB_FEM_Report(LIB_FEM_EVT_DS18B20_CRC_FAIL, LIB_FEM_SEV_WARNING, LIB_FEM_SRC_DS18B20, ...)` when `DRV_DS18B20_Read()` returns `ok = false`, in addition to still copying the stub's output verbatim into `s_latest_reading` (unchanged, already covered by UT-APP-DS18B20-001–006).
 
 |Preconditions
-|General preconditions apply.
+|General preconditions apply. `setUp()` calls `LIB_FEM_Init()` with a stub `get_ms` and an `on_event` callback that captures the most recent reported record.
 
 |*Test Steps:* | 1) Configure the stub to return `ok = false`, `temp_c = 0.0f`, `valid = false` (simulating a CRC failure or no-presence condition). +
 2) Start `APP_DS18B20_Task` and let it run for at least 1 stub-recorded call. +
 3) Cancel/join the harness thread. +
-4) Call `APP_DS18B20_GetLatest(&out)`.
+4) Call `APP_DS18B20_GetLatest(&out)`. +
+5) Inspect the captured FEM record.
 
-|*Expected Results (current behaviour — documents a gap, not a clean pass):*| `out` is copied straight from the stub's output struct regardless of the `ok` return value (`out.valid == false` in this case, because the stub wrote `valid = false`) — the task performs no additional error handling, retry, or fault escalation. No call is made to any FEM/fault-reporting function from within `ds18b20_task.c`, because no such call exists in the source. This is a *known gap* — see Open Items OI-004.
-|*Actual Results:*| *PASS* (i.e. the test confirms the documented current — non-conformant — behaviour occurs exactly as described; it does not indicate the gap itself is resolved). `test_task_ignores_failed_read_known_gap` — `test_ds18b20_task.c:232:test_task_ignores_failed_read_known_gap:PASS`. See `docs/Unit_test_report/UT-APP-DS18B20-001-TestEvidence_V1.0.txt`. OI-004 remains open — treat this "PASS" as "gap confirmed present," not "issue resolved."
+|*Expected Results:*| `out.valid == false`. At least one FEM report captured, with `event_id == LIB_FEM_EVT_DS18B20_CRC_FAIL`, `severity == LIB_FEM_SEV_WARNING`, `source == LIB_FEM_SRC_DS18B20`.
+|*Actual Results:*| *Pending.* `test_task_reports_fem_on_failed_read` implemented in `test_ds18b20_task.c`, but not yet run — this development machine has no C compiler (`gcc`/`make`/WSL all unavailable) to build the host test binary. Needs to be run and re-evidenced on a machine with the toolchain before this can be marked PASS.
+|===
+
+---
+
+==== UT-APP-DS18B20-009 — Task does not report to the FEM on a successful read
+
+[cols="1,3", options="header"]
+|===
+|Field |Value
+
+|Test ID
+|UT-APP-DS18B20-009
+
+|Requirement
+|`SWRS-M1-SENS-01` item 3 (report only on failure — a report on every successful read would flood the FEM ring buffer and misrepresent nominal operation as a fault condition).
+
+|Objective
+|Verify that `APP_DS18B20_Task` does not call `LIB_FEM_Report()` when `DRV_DS18B20_Read()` succeeds.
+
+|Preconditions
+|General preconditions apply. Same FEM capture setup as UT-APP-DS18B20-007.
+
+|*Test Steps:* | 1) Configure the stub to return `ok = true`, `temp_c = 25.0f`, `valid = true`. +
+2) Start `APP_DS18B20_Task` and let it run for at least 1 stub-recorded call. +
+3) Cancel/join the harness thread. +
+4) Check the FEM report count captured via the `on_event` callback.
+
+|*Expected Results:*| Zero FEM reports captured.
+|*Actual Results:*| *Pending* — see UT-APP-DS18B20-007; same toolchain limitation applies.
 |===
 
 ---
@@ -565,8 +602,9 @@ image::UT-APP-DS18B20-008-reference-thermometer-comparison.jpg[Debugger watch on
 |UT-APP-DS18B20-004 |GetLatest tracks the most recent iteration |SWRS-SYS-03 |C |Automated |PASS
 |UT-APP-DS18B20-005 |Task forwards config pointer unchanged |SWRS-M1-SENS-01 |C |Automated |PASS
 |UT-APP-DS18B20-006 |Task polls continuously, does not stall |OP-SDP-001 §7 |C |Automated |PASS
-|UT-APP-DS18B20-007 |Task ignores Read() failure (known gap) |CGD-2026-001 Rule 9 |C |Automated |PASS (gap confirmed present)
+|UT-APP-DS18B20-007 |Task reports Read() failure to the FEM |CGD-2026-001 Rule 9 |C |Automated |Pending re-run
 |UT-APP-DS18B20-008 |On-target sanity check with real driver |SWRS-SYS-03 |C |Manual |PASS
+|UT-APP-DS18B20-009 |Task does not report to the FEM on success |SWRS-M1-SENS-01 |C |Automated |Pending re-run
 
 |===
 
@@ -616,7 +654,7 @@ image::UT-APP-DS18B20-002-TestEvidence_V1.0.png[On-target debugger watch evidenc
 
 |OI-004
 |High
-|`APP_DS18B20_Task` discards the return value of `DRV_DS18B20_Read()` and never reports a failure (see UT-APP-DS18B20-007). *Still open* — needs the team lead's decision on whether this is acceptable for the current release or needs a fix (e.g. force `s_latest_reading.valid = false` on failure, and/or call `LIB_FEM_Report(LIB_FEM_EVT_DS18B20_CRC_FAIL, LIB_FEM_SEV_WARNING, LIB_FEM_SRC_DS18B20, ...)`, both already available in `lib_fem.h`). Note: `SWRS-M1-SENS-01` item 3 explicitly requires CRC failures to be reported as `EVT_WARNING` to the FEM, and `drv_ds18b20.h` explicitly delegates that responsibility to the caller (`ds18b20_task.c`) — this is not just a coding-guideline preference, it is currently an unmet system requirement.
+|*Code fix implemented, verification pending.* `APP_DS18B20_Task` now calls `LIB_FEM_Report(LIB_FEM_EVT_DS18B20_CRC_FAIL, LIB_FEM_SEV_WARNING, LIB_FEM_SRC_DS18B20, ...)` when `DRV_DS18B20_Read()` returns `ok = false` (see UT-APP-DS18B20-007, updated; UT-APP-DS18B20-009, added). Note: the FEM itself is not yet initialised anywhere in the firmware (`LIB_FEM_Init()` is not called by any task) — `LIB_FEM_Report()` safely no-ops until it is, so this report currently has no effect on-target; tracked as a follow-up in ORPT-120. Verification (re-run of the host test suite) also tracked in ORPT-120 — this development machine's C toolchain is blocked by Windows Application Control (`as.exe`).
 |Shanid KT
 
 |OI-005
@@ -628,4 +666,4 @@ image::UT-APP-DS18B20-002-TestEvidence_V1.0.png[On-target debugger watch evidenc
 
 ---
 
-_End of document UT-REPORT-APP-DS18B20-001 v1.0 — 8 of 8 test cases executed and PASS. OI-001, OI-002, and OI-003 resolved; OI-004 and OI-005 remain open. Not ready for formal sign-off until OI-004 is resolved with the team lead._
+_End of document UT-REPORT-APP-DS18B20-001 v1.1 — 7 of 9 test cases executed and PASS; UT-APP-DS18B20-007 (updated) and UT-APP-DS18B20-009 (new) pending re-run on a machine with a C toolchain. OI-001, OI-002, and OI-003 resolved; OI-004 code fix implemented (verification pending); OI-005 remains open. Not ready for formal sign-off until UT-APP-DS18B20-007/-009 are re-run and evidenced._
