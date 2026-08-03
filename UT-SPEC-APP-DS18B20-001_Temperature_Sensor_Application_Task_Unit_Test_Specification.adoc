@@ -7,8 +7,8 @@
 :icons: font
 :source-highlighter: rouge
 :imagesdir: images
-:revnumber: 1.1
-:revdate: 2026-08-01
+:revnumber: 1.0
+:revdate: 2026-07-30
 
 :author: CIOET Firmware Team
 :email: shanid@htic.iitm.ac.in
@@ -22,33 +22,9 @@
 |===
 |Version |Date       |Author  |Reviewer  |Change Summary
 
-|1.0     |2026-07-30 |Shanid KT |        |Initial draft
-
-|1.1     |2026-08-01 |Shanid KT |benin-htic |OI-004 fix: `APP_DS18B20_Task` now calls `LIB_FEM_Report()` on a failed read. UT-APP-DS18B20-007 updated from "documents known gap" to "verifies the fix"; added UT-APP-DS18B20-009 to confirm no report fires on a successful read.
+|1.0     |2026-07-30 |Shanid KT |Benin R |Initial draft
 
 |===
-
-=== Submodule Status
-
-This specification is written and tested against the following sibling module checkouts (super-project layout — see the test Makefile), pinned as of this revision:
-
-[cols="1,2,2,2", options="header"]
-|===
-|Module |Remote |Branch / Ref |Commit
-
-|`common-libs`
-|`CIOET/common-libs`
-|`ORPT-118-Temperature-sensor-DS18B20-implementation`
-|`d307f1e` (2026-07-01) — *has local uncommitted staged changes* in `util_libs/crc/lib_crc.c/.h`, `util_libs/onewire/lib_onewire.c`, `tests/test_lib_crc.c`, not evaluated by this specification
-
-|`unity`
-|`ThrowTheSwitch/Unity`
-|Detached HEAD
-|`bbf8f37` (2026-05-29)
-
-|===
-
-WARNING: `common-libs` has local, uncommitted staged changes at the time of this revision (see table above). This specification's assumptions about `lib_crc`/`lib_onewire` reflect the last *committed* state at `d307f1e`, not the working tree — if those staged changes land, this section and OI-related assumptions should be re-checked.
 
 ---
 
@@ -127,7 +103,7 @@ This specification does *not* cover:
 |The module-static `DRV_DS18B20_Data_t` inside `ds18b20_task.c` that `APP_DS18B20_Task` writes and `APP_DS18B20_GetLatest` reads
 
 |FEM
-|Fault and Event Manager (`common-libs/util_libs/fem`) — `ds18b20_task` reports failed reads to it (see UT-APP-DS18B20-007). The FEM is not yet initialised anywhere in the wider firmware (`LIB_FEM_Init()` is not called by any task); `LIB_FEM_Report()` safely no-ops until it is, so this call is forward-compatible but currently has no effect on-target
+|Fault and Event Manager (`common_libs` utility module) — referenced only because `ds18b20_task` currently does not call it (see UT-APP-DS18B20-004)
 
 |TC
 |Test Case
@@ -385,9 +361,9 @@ All test cases below exercise this logic against the stub driver described in <<
 
 ---
 
-=== Fault Handling
+=== Fault Handling (Known Gap)
 
-==== UT-APP-DS18B20-007 — Task reports a failed DRV_DS18B20_Read() call to the FEM
+==== UT-APP-DS18B20-007 — Task ignores a failed DRV_DS18B20_Read() call
 
 [cols="1,3", options="header"]
 |===
@@ -397,21 +373,20 @@ All test cases below exercise this logic against the stub driver described in <<
 |UT-APP-DS18B20-007
 
 |Requirement
-|CIOET-ORGPORT-CGD-2026-001 Rule 9 (every non-void return value must be checked; on failure call `LIB_FEM_Report()`). `SWRS-M1-SENS-01` item 3 — "Detect DS18B20 CRC failures and report `EVT_WARNING` to the FEM on each failure."
+|CIOET-ORGPORT-CGD-2026-001 Rule 9 (every non-void return value must be checked; on failure call `LIB_FEM_Report()`)
 
 |Objective
-|Verify the OI-004 fix: when `DRV_DS18B20_Read()` returns `ok = false`, `APP_DS18B20_Task` calls `LIB_FEM_Report(LIB_FEM_EVT_DS18B20_CRC_FAIL, LIB_FEM_SEV_WARNING, LIB_FEM_SRC_DS18B20, ...)` exactly once per failed iteration, in addition to still copying the stub's output verbatim into `s_latest_reading` (unchanged behaviour, already covered by UT-APP-DS18B20-001 through -006).
+|Document and verify the current (non-conformant) behaviour of `APP_DS18B20_Task`: the return value of `DRV_DS18B20_Read()` is discarded with a `(void)` cast, and no fault is reported. When the stub returns `ok = false`, whatever it wrote into the output struct (including a stale or `valid = false` result) is copied into `s_latest_reading` exactly as with a successful call — the task does not distinguish success from failure and never calls `LIB_FEM_Report()`.
 
 |Preconditions
-|General preconditions apply. `LIB_FEM_Init()` is called in `setUp()` with a stub `get_ms` and an `on_event` callback that captures the most recent reported record, so the test can assert on it without draining the FEM ring buffer.
+|General preconditions apply.
 
 |*Test Steps:* | 1) Configure the stub to return `ok = false`, `temp_c = 0.0f`, `valid = false` (simulating a CRC failure or no-presence condition). +
 2) Start `APP_DS18B20_Task` and let it run for at least 1 stub-recorded call. +
 3) Cancel/join the harness thread. +
-4) Call `APP_DS18B20_GetLatest(&out)`. +
-5) Inspect the captured FEM record from the `on_event` callback.
+4) Call `APP_DS18B20_GetLatest(&out)`.
 
-|*Expected Results:*| `out.valid == false` (task still copies the stub's output verbatim). At least one FEM report was captured, with `event_id == LIB_FEM_EVT_DS18B20_CRC_FAIL`, `severity == LIB_FEM_SEV_WARNING`, and `source == LIB_FEM_SRC_DS18B20`.
+|*Expected Results (current behaviour — documents a gap, not a clean pass):*| `out` is copied straight from the stub's output struct regardless of the `ok` return value (`out.valid == false` in this case, because the stub wrote `valid = false`) — the task performs no additional error handling, retry, or fault escalation. No call is made to any FEM/fault-reporting function from within `ds18b20_task.c`, because no such call exists in the source. This is a *known gap* against the coding standard — see Open Items OI-004 for the required fix (check the return value; on `false`, either force `s_latest_reading.valid = false` regardless of what the driver wrote, or escalate via a fault-reporting call).
 |*Actual Results:*|
 |===
 
@@ -447,35 +422,6 @@ All test cases below exercise this logic against the stub driver described in <<
 
 ---
 
-==== UT-APP-DS18B20-009 — Task does not report to the FEM on a successful read
-
-[cols="1,3", options="header"]
-|===
-|Field |Value
-
-|Test ID
-|UT-APP-DS18B20-009
-
-|Requirement
-|`SWRS-M1-SENS-01` item 3 (report only on failure — a report on every successful read would flood the FEM ring buffer and misrepresent nominal operation as a fault condition).
-
-|Objective
-|Verify that `APP_DS18B20_Task` does not call `LIB_FEM_Report()` when `DRV_DS18B20_Read()` succeeds, i.e. the fix in UT-APP-DS18B20-007 is conditional on failure, not unconditional.
-
-|Preconditions
-|General preconditions apply. Same FEM capture setup as UT-APP-DS18B20-007.
-
-|*Test Steps:* | 1) Configure the stub to return `ok = true`, `temp_c = 25.0f`, `valid = true`. +
-2) Start `APP_DS18B20_Task` and let it run for at least 1 stub-recorded call. +
-3) Cancel/join the harness thread. +
-4) Check the FEM report count captured via the `on_event` callback.
-
-|*Expected Results:*| Zero FEM reports were captured.
-|*Actual Results:*|
-|===
-
----
-
 == Test Traceability Matrix
 
 [cols="1,2,1,1,1", options="header"]
@@ -488,9 +434,8 @@ All test cases below exercise this logic against the stub driver described in <<
 |UT-APP-DS18B20-004 |GetLatest tracks the most recent iteration |SWRS-SYS-03 |C |Automated
 |UT-APP-DS18B20-005 |Task forwards config pointer unchanged |SWRS-M1-SENS-01* |C |Automated
 |UT-APP-DS18B20-006 |Task polls continuously, does not stall |OP-SDP-001 §7 |C |Automated
-|UT-APP-DS18B20-007 |Task reports Read() failure to the FEM |CGD-2026-001 Rule 9 |C |Automated
+|UT-APP-DS18B20-007 |Task ignores Read() failure (known gap) |CGD-2026-001 Rule 9 |C |Automated
 |UT-APP-DS18B20-008 |On-target sanity check with real driver |SWRS-SYS-03 |C |Manual
-|UT-APP-DS18B20-009 |Task does not report to the FEM on success |SWRS-M1-SENS-01* |C |Automated
 
 |===
 
@@ -534,8 +479,7 @@ The following test case is marked `Manual` in the Test Traceability Matrix above
 
 |OI-004
 |High
-|`APP_DS18B20_Task` discards the return value of `DRV_DS18B20_Read()` and never reports a failure (see UT-APP-DS18B20-007). Confirm with the team lead whether this is acceptable for the current release or needs a fix (e.g. force `s_latest_reading.valid = false` on failure) before formal sign-off. +
-_Update (v1.1):_ Fix implemented — `APP_DS18B20_Task` now calls `LIB_FEM_Report()` on failure, verified by UT-APP-DS18B20-007/-009. Awaiting an actual test run and evidence capture (see the Unit Test Report) before this can be marked resolved. Tracked in ORPT-120 (also covers the separate, cross-cutting follow-up that FEM is not yet initialised anywhere in the firmware).
+|`APP_DS18B20_Task` discards the return value of `DRV_DS18B20_Read()` and never reports a failure (see UT-APP-DS18B20-007). Confirm with the team lead whether this is acceptable for the current release or needs a fix (e.g. force `s_latest_reading.valid = false` on failure) before formal sign-off.
 |Shanid KT
 
 |OI-005
