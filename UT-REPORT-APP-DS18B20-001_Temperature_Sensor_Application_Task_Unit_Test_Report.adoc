@@ -41,6 +41,55 @@
 
 ---
 
+== Submodule Status
+
+This report is written and tested against the following superproject submodule checkouts (`git submodule status`, run from the `orgport-app-s32k312-project` superproject root), pinned as of this revision:
+
+[cols="2,3,2,1", options="header"]
+|===
+|Submodule |Commit (tag/describe) |Branch |Notes
+
+|`CANopenNode`
+|`ac21407` (v4.1)
+|Detached HEAD
+|
+
+|`cioet-dev-tools`
+|`8675cea` (V0.0.1-alpha)
+|Detached HEAD
+|
+
+|`common-libs`
+|`d307f1e` (V0.0.1-alpha)
+|`ORPT-118-Temperature-sensor-DS18B20-implementation`
+|*Local uncommitted changes* — 4 files modified (`util_libs/crc/lib_crc.c`/`.h`, `util_libs/onewire/lib_onewire.c`, `tests/test_lib_crc.c`), not evaluated by this report
+
+|`orgport-app-s32k312`
+|`1c3440a` (V0.0.1-alpha-3-g1c3440a)
+|`ORPT-118-Temperature-sensor-DS18B20-implementation`
+|Ahead of the superproject's recorded pointer (`+` in `git submodule status`) — this branch has commits beyond what the superproject currently references; expected while this PR is in review
+
+|`orgport-docs`
+|`3477dd0` (V0.0.1-alpha)
+|Detached HEAD
+|
+
+|`orgport-hardware`
+|`332104e` (`heads/main-release`)
+|Detached HEAD
+|
+
+|`unity`
+|`bbf8f37` (v2.6.1-84-gbbf8f37)
+|Detached HEAD
+|
+
+|===
+
+WARNING: `common-libs` has local, uncommitted changes at the time of this revision. This report's assumptions about `lib_crc`/`lib_onewire` reflect the last *committed* state at `d307f1e`, not the working tree — if those changes land, this section and any related Open Items should be re-checked.
+
+---
+
 [[execution-readiness]]
 == Execution Readiness Checklist — What Is Needed From Your Side
 
