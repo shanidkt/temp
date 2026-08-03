@@ -86,8 +86,6 @@ This report is written and tested against the following superproject submodule c
 
 |===
 
-WARNING: `common-libs` has local, uncommitted changes at the time of this revision. This report's assumptions about `lib_crc`/`lib_onewire` reflect the last *committed* state at `d307f1e`, not the working tree — if those changes land, this section and any related Open Items should be re-checked.
-
 ---
 
 [[execution-readiness]]
